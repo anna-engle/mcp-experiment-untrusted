@@ -8,7 +8,7 @@ import {
 } from "../src/workspace.js";
 import { connectHarness, textOf, type Harness } from "./harness.js";
 
-describe("read_document MCP tool", () => {
+describe("read_document", () => {
   let harness: Harness | undefined;
 
   afterEach(async () => {
@@ -16,7 +16,7 @@ describe("read_document MCP tool", () => {
     harness = undefined;
   });
 
-  it("returns a document from the in-memory array", () => {
+  it("returns public-notes from the in-memory document array", () => {
     const workspace = createWorkspace();
     const fromArray = workspace.documents.find((doc) => doc.id === PUBLIC_NOTES_ID);
     const lookedUp = getDocument(workspace, PUBLIC_NOTES_ID);
@@ -28,7 +28,7 @@ describe("read_document MCP tool", () => {
     );
   });
 
-  it("connects an MCP client to the server", async () => {
+  it("official SDK Client can connect to our MCP server", async () => {
     harness = await connectHarness({ policyMode: "enforced" });
 
     const info = harness.client.getServerVersion();
@@ -39,7 +39,7 @@ describe("read_document MCP tool", () => {
     expect(harness.client.getServerCapabilities()?.tools).toBeDefined();
   });
 
-  it("advertises read_document so the client can install/use the tool", async () => {
+  it("MCP client discovers read_document via tools/list", async () => {
     harness = await connectHarness({ policyMode: "enforced" });
 
     const { tools } = await harness.client.listTools();
@@ -49,7 +49,7 @@ describe("read_document MCP tool", () => {
     expect(JSON.stringify(readDocument?.inputSchema)).toContain("id");
   });
 
-  it("lets the connected client call read_document and get the array body", async () => {
+  it("MCP client can call read_document and get the public-notes body", async () => {
     harness = await connectHarness({ policyMode: "enforced" });
     const expected = getDocument(createWorkspace(), PUBLIC_NOTES_ID);
 

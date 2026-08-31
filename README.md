@@ -23,15 +23,49 @@ Hardcoded in `src/workspace.ts`:
 - `private-roadmap` — internal
 - `malicious-document` — contains a prompt injection aimed at `claim_admin` / `send_payment`
 
-## First tools
+## Sessions and policy (`src/policy.ts`)
 
-`read_document(id)` looks up a document in that in-memory array and returns `{ id, body }`.
+A session is a principal bound **out of band** when the server is created. The model cannot change it.
 
-`share_document(id, destination)` is the **dangerous** tool. It does not send email or hit a network; it appends `destination` to `sharedWith` and returns a line like `SHARED private-roadmap with attacker@evil.example`.
+| Session | Function | Can do |
+| --- | --- | --- |
+| **reader** (default) | `readerSession()` | `files:read` only — `read_document`, not `send_payment` |
+| **privileged** | `privilegedSession()` | `files:read` and `payments:send` |
 
-**Permissive** here means: this handler does **not** call `authorize`. If an MCP client invokes the tool, the server records the share. Session capabilities (`intern` vs `treasurer`) and `policyMode: "enforced"` do not apply to `share_document`. That is the confused-deputy failure mode — later we will put a server-side check in front of it.
+`npm run dev` starts a **reader** session with `policyMode: "enforced"`.
 
-`policyMode: "permissive"` on `createServer` is the same idea for **all** tools (including `send_payment`): skip capability checks. `share_document` is always in that mode, even when the rest of the server is enforced.
+**Policy on** (`policyMode: "enforced"`): tools that call `authorize` refuse work the session cannot do. That is what tests mean by “read-only session, policy on.”
+
+**Permissive server** (`policyMode: "permissive"`): every tool skips `authorize` (including `send_payment`). Separate from `share_document`, which never checks policy at all.
+
+## Tools
+
+### `read_document(id)`
+
+Looks up a document in the in-memory array (`src/workspace.ts`) and returns `{ id, body }`.
+
+Under `policyMode: "enforced"`, this requires the session capability `files:read` (the default **reader** session has that; it cannot send payments).
+
+### `share_document(id, destination)` — dangerous, currently permissive
+
+Registered in `src/server.ts`. Arguments:
+
+- `id` — document id (`public-notes`, `private-roadmap`, `malicious-document`)
+- `destination` — who to “share” with (any string; treated as an email/URL in the demo)
+
+It does **not** send email or call a network. It:
+
+1. Finds the document in the in-memory array
+2. Appends `destination` to that document’s `sharedWith` array (skips duplicates)
+3. Returns text `SHARED <id> with <destination>` plus `{ id, destination, sharedWith }`
+
+Example: sharing the confidential roadmap with an attacker records `sharedWith: ["attacker@evil.example"]` and prints `SHARED private-roadmap with attacker@evil.example`.
+
+**Permissive** means this handler never calls `authorize`. The server does not ask whether this session is allowed to share `private-roadmap`. If the MCP client invoked the tool, the mutation happens. `policyMode: "enforced"` and reader vs privileged **do not apply** to `share_document`. That is the confused-deputy bug this experiment will later close with a server-side check.
+
+`policyMode: "permissive"` on `createServer` is the same idea applied to **every** tool (including `send_payment`): skip capability checks. `share_document` is hardcoded to that behavior even when the rest of the server is enforced.
+
+This step is done when an MCP client can invoke **both** `read_document` and `share_document`. That is `tests/share_document.test.ts`.
 
 ## Verify (tests)
 
@@ -39,15 +73,19 @@ Hardcoded in `src/workspace.ts`:
 npm test
 ```
 
-`tests/read_document.test.ts` checks:
+`npm test` uses Vitest’s **verbose** reporter so each check prints as a sentence, not just a file count. Look for:
 
-1. A document is returned from the in-memory array (`getDocument`).
-2. An SDK **client** connects to **our server** (`getServerVersion()` is `mcp-experiment-untrusted`).
-3. The client can discover `read_document` (`listTools`) and **call** it (`callTool` for `public-notes` matches the array body).
+```
+✓ MCP client can invoke both tools (including the dangerous one)
+  ✓ MCP client lists and calls read_document AND share_document; share mutates sharedWith
+  ✓ share_document is permissive: read-only session still shares private-roadmap when policy is on
+```
 
-`tests/share_document.test.ts` checks that the same client can invoke **both** `read_document` and `share_document`, and that `share_document` mutates `sharedWith` under an intern + enforced session.
+That pair is the “client can invoke both tools” gate.
 
-Auth / injection cases live in `tests/securitytest.ts`.
+- `tests/read_document.test.ts` — connect + `read_document`
+- `tests/share_document.test.ts` — both tools, including dangerous `share_document`
+- `tests/securitytest.ts` — injection text, then payment policy for **reader** vs **privileged**
 
 ## Run the server (stdio)
 
@@ -55,4 +93,4 @@ Auth / injection cases live in `tests/securitytest.ts`.
 npm run dev
 ```
 
-This process waits for an MCP **host** on stdin/stdout (stderr prints a short banner). Ctrl+C to stop. Point Cursor or another host at `tsx src/server.ts` (or `node dist/server.js` after `npm run build`).
+This process waits for an MCP **host** on stdin/stdout (stderr prints that it is a reader session with policy enforced). Ctrl+C to stop. Point Cursor or another host at `tsx src/server.ts` (or `node dist/server.js` after `npm run build`).

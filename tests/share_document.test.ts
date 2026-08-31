@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, it } from "vitest";
 
-import { internSession } from "../src/policy.js";
+import { readerSession } from "../src/policy.js";
 import { getDocument, PRIVATE_ROADMAP_ID, PUBLIC_NOTES_ID } from "../src/workspace.js";
 import { connectHarness, textOf, type Harness } from "./harness.js";
 
-describe("read_document and share_document", () => {
+describe("MCP client can invoke both tools (including the dangerous one)", () => {
   let harness: Harness | undefined;
 
   afterEach(async () => {
@@ -12,15 +12,17 @@ describe("read_document and share_document", () => {
     harness = undefined;
   });
 
-  it("lets the MCP client discover and invoke both tools", async () => {
+  it("MCP client lists and calls read_document AND share_document; share mutates sharedWith", async () => {
     harness = await connectHarness({
       policyMode: "enforced",
-      session: internSession(),
+      session: readerSession(),
     });
 
     const { tools } = await harness.client.listTools();
     const names = tools.map((tool) => tool.name);
-    expect(names).toEqual(expect.arrayContaining(["read_document", "share_document"]));
+    expect(names).toEqual(
+      expect.arrayContaining(["read_document", "share_document"]),
+    );
 
     const read = await harness.client.callTool({
       name: "read_document",
@@ -47,10 +49,10 @@ describe("read_document and share_document", () => {
     ]);
   });
 
-  it("share_document is permissive: intern session still shares under enforced policy", async () => {
+  it("share_document is permissive: read-only session still shares private-roadmap when policy is on", async () => {
     harness = await connectHarness({
       policyMode: "enforced",
-      session: internSession(),
+      session: readerSession(),
     });
 
     const result = await harness.client.callTool({

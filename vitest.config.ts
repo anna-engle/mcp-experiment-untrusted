@@ -4,5 +4,7 @@ export default defineConfig({
   test: {
     include: ["tests/**/*test.ts", "tests/**/*.test.ts"],
     root: import.meta.dirname,
+    reporters: ["verbose"],
+    fileParallelism: false,
   },
 });

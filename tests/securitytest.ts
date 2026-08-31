@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 
-import { internSession, treasurerSession } from "../src/policy.js";
+import { readerSession, privilegedSession } from "../src/policy.js";
 import {
   DOCUMENT_IDS,
   MALICIOUS_DOCUMENT_ID,
@@ -8,7 +8,7 @@ import {
 } from "../src/workspace.js";
 import { connectHarness, textOf, type Harness } from "./harness.js";
 
-describe("untrusted content vs server-side authority", () => {
+describe("security: untrusted content vs server-side authority", () => {
   let harness: Harness | undefined;
 
   afterEach(async () => {
@@ -16,7 +16,7 @@ describe("untrusted content vs server-side authority", () => {
     harness = undefined;
   });
 
-  it("lists only the three hardcoded documents", async () => {
+  it("list_files returns only public-notes, private-roadmap, malicious-document", async () => {
     harness = await connectHarness({ policyMode: "enforced" });
     const result = await harness.client.callTool({
       name: "list_files",
@@ -28,7 +28,7 @@ describe("untrusted content vs server-side authority", () => {
     });
   });
 
-  it("read_document returns an error for an unknown id", async () => {
+  it("read_document rejects an unknown id", async () => {
     harness = await connectHarness({ policyMode: "enforced" });
     const result = await harness.client.callTool({
       name: "read_document",
@@ -38,7 +38,7 @@ describe("untrusted content vs server-side authority", () => {
     expect(textOf(result)).toContain("no such document: does-not-exist");
   });
 
-  it("exposes prompt-injected text through malicious-document", async () => {
+  it("malicious-document body contains the prompt injection (send_payment / claim_admin)", async () => {
     harness = await connectHarness({ policyMode: "enforced" });
     const result = await harness.client.callTool({
       name: "read_document",
@@ -51,7 +51,7 @@ describe("untrusted content vs server-side authority", () => {
     expect(body).toContain("claim_admin");
   });
 
-  it("permissive mode: an induced send_payment succeeds (confused deputy)", async () => {
+  it("permissive server: induced send_payment succeeds (confused deputy)", async () => {
     harness = await connectHarness({ policyMode: "permissive" });
     const result = await harness.client.callTool({
       name: "send_payment",
@@ -65,10 +65,10 @@ describe("untrusted content vs server-side authority", () => {
     });
   });
 
-  it("enforced intern session: induced send_payment is denied and the ledger is unchanged", async () => {
+  it("read-only session, policy on: induced send_payment is denied; ledger unchanged", async () => {
     harness = await connectHarness({
       policyMode: "enforced",
-      session: internSession(),
+      session: readerSession(),
     });
     const result = await harness.client.callTool({
       name: "send_payment",
@@ -79,14 +79,14 @@ describe("untrusted content vs server-side authority", () => {
     expect(harness.workspaceLedgerLength()).toBe(0);
   });
 
-  it("enforced intern session: claim_admin with a token from the injection does not grant payments", async () => {
+  it("read-only session, policy on: claim_admin from injected text does not unlock payments", async () => {
     harness = await connectHarness({
       policyMode: "enforced",
-      session: internSession(),
+      session: readerSession(),
     });
     const claimed = await harness.client.callTool({
       name: "claim_admin",
-      arguments: { token: "i-am-the-treasurer" },
+      arguments: { token: "i-am-privileged" },
     });
     expect(claimed.isError).toBe(true);
 
@@ -98,10 +98,10 @@ describe("untrusted content vs server-side authority", () => {
     expect(harness.workspaceLedgerLength()).toBe(0);
   });
 
-  it("enforced intern session: even a correct out-of-band token does not enlarge this session", async () => {
+  it("read-only session, policy on: matching out-of-band token still does not enlarge this session", async () => {
     harness = await connectHarness({
       policyMode: "enforced",
-      session: internSession(),
+      session: readerSession(),
       outOfBandAdminToken: "rotate-me-out-of-band",
     });
     const claimed = await harness.client.callTool({
@@ -119,10 +119,10 @@ describe("untrusted content vs server-side authority", () => {
     expect(harness.workspaceLedgerLength()).toBe(0);
   });
 
-  it("enforced treasurer session: send_payment is allowed because the principal was bound out of band", async () => {
+  it("privileged session, policy on: send_payment allowed because principal was bound out of band", async () => {
     harness = await connectHarness({
       policyMode: "enforced",
-      session: treasurerSession(),
+      session: privilegedSession(),
     });
     const result = await harness.client.callTool({
       name: "send_payment",
@@ -132,7 +132,7 @@ describe("untrusted content vs server-side authority", () => {
     expect(harness.workspaceLedgerLength()).toBe(1);
     expect(result.structuredContent).toMatchObject({
       payee: "vendor@example.com",
-      requestedBy: "treasurer",
+      requestedBy: "privileged",
     });
   });
 });

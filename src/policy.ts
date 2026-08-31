@@ -18,18 +18,18 @@ export type PolicyDecision =
   | { allow: true }
   | { allow: false; reason: string };
 
-/** Intern: can read workspace files, cannot move money. */
-export function internSession(): Session {
+/** Default session: can read documents, cannot send payments. */
+export function readerSession(): Session {
   return {
-    principalId: "intern",
+    principalId: "reader",
     capabilities: new Set(["files:read"]),
   };
 }
 
-/** Treasurer: same reads, plus payments. Bound out of band — not by tool args. */
-export function treasurerSession(): Session {
+/** Same reads, plus payments. Bound out of band — not by tool args. */
+export function privilegedSession(): Session {
   return {
-    principalId: "treasurer",
+    principalId: "privileged",
     capabilities: new Set(["files:read", "payments:send"]),
   };
 }

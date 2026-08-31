@@ -1,7 +1,7 @@
 import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
 import { createMcpHandler } from "@modelcontextprotocol/server";
 
-import { internSession } from "../src/policy.js";
+import { readerSession } from "../src/policy.js";
 import { createServer, type PolicyMode } from "../src/server.js";
 import type { Workspace } from "../src/workspace.js";
 
@@ -14,11 +14,11 @@ export type Harness = {
 
 export async function connectHarness(options: {
   policyMode: PolicyMode;
-  session?: ReturnType<typeof internSession>;
+  session?: ReturnType<typeof readerSession>;
   outOfBandAdminToken?: string;
 }): Promise<Harness> {
   const created = createServer({
-    session: options.session ?? internSession(),
+    session: options.session ?? readerSession(),
     policyMode: options.policyMode,
     outOfBandAdminToken: options.outOfBandAdminToken,
   });

@@ -7,7 +7,7 @@ import * as z from "zod/v4";
 import {
   authorize,
   evaluateClaimAdmin,
-  internSession,
+  readerSession,
   type Session,
 } from "./policy.js";
 import {
@@ -232,11 +232,11 @@ const isMain =
 
 if (isMain) {
   console.error(
-    "mcp-experiment-untrusted on stdio (intern, enforced). Waiting for an MCP client; Ctrl+C to stop.",
+    "mcp-experiment-untrusted on stdio (reader session, policy enforced). Waiting for an MCP client; Ctrl+C to stop.",
   );
   void serveStdio(() => {
     const { server } = createServer({
-      session: internSession(),
+      session: readerSession(),
       policyMode: "enforced",
     });
     return server;
