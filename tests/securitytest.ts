@@ -1,66 +1,12 @@
-import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
-import { createMcpHandler } from "@modelcontextprotocol/server";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { internSession, treasurerSession } from "../src/policy.js";
-import { createServer, type PolicyMode } from "../src/server.js";
 import {
-  DOCUMENT_PATHS,
-  MALICIOUS_DOCUMENT_PATH,
+  DOCUMENT_IDS,
+  MALICIOUS_DOCUMENT_ID,
   PROMPT_INJECTION,
 } from "../src/workspace.js";
-
-type Harness = {
-  client: Client;
-  close: () => Promise<void>;
-  workspaceLedgerLength: () => number;
-};
-
-async function connectHarness(options: {
-  policyMode: PolicyMode;
-  session?: ReturnType<typeof internSession>;
-  outOfBandAdminToken?: string;
-}): Promise<Harness> {
-  const created = createServer({
-    session: options.session ?? internSession(),
-    policyMode: options.policyMode,
-    outOfBandAdminToken: options.outOfBandAdminToken,
-  });
-
-  const handler = createMcpHandler(() => created.server);
-  const transport = new StreamableHTTPClientTransport(
-    new URL("http://test.local/mcp"),
-    {
-      fetch: (url, init) => handler.fetch(new Request(url, init)),
-    },
-  );
-
-  const client = new Client(
-    { name: "security-harness", version: "0.1.0" },
-    { versionNegotiation: { mode: "auto" } },
-  );
-  await client.connect(transport);
-
-  return {
-    client,
-    workspaceLedgerLength: () => created.workspace.ledger.length,
-    close: async () => {
-      await client.close();
-      await handler.close();
-    },
-  };
-}
-
-function textOf(result: {
-  content: unknown;
-  isError?: boolean;
-}): string {
-  const content = result.content as Array<{ type: string; text?: string }>;
-  return content
-    .filter((part) => part.type === "text")
-    .map((part) => part.text ?? "")
-    .join("\n");
-}
+import { connectHarness, textOf, type Harness } from "./harness.js";
 
 describe("untrusted content vs server-side authority", () => {
   let harness: Harness | undefined;
@@ -78,15 +24,25 @@ describe("untrusted content vs server-side authority", () => {
     });
     expect(result.isError).toBeFalsy();
     expect(result.structuredContent).toEqual({
-      paths: [...DOCUMENT_PATHS].sort(),
+      ids: [...DOCUMENT_IDS],
     });
+  });
+
+  it("read_document returns an error for an unknown id", async () => {
+    harness = await connectHarness({ policyMode: "enforced" });
+    const result = await harness.client.callTool({
+      name: "read_document",
+      arguments: { id: "does-not-exist" },
+    });
+    expect(result.isError).toBe(true);
+    expect(textOf(result)).toContain("no such document: does-not-exist");
   });
 
   it("exposes prompt-injected text through malicious-document", async () => {
     harness = await connectHarness({ policyMode: "enforced" });
     const result = await harness.client.callTool({
-      name: "read_file",
-      arguments: { path: MALICIOUS_DOCUMENT_PATH },
+      name: "read_document",
+      arguments: { id: MALICIOUS_DOCUMENT_ID },
     });
     expect(result.isError).toBeFalsy();
     const body = textOf(result);

@@ -10,7 +10,12 @@ import {
   internSession,
   type Session,
 } from "./policy.js";
-import { createWorkspace, type Workspace } from "./workspace.js";
+import {
+  createWorkspace,
+  getDocument,
+  shareDocument,
+  type Workspace,
+} from "./workspace.js";
 
 export type PolicyMode = "permissive" | "enforced";
 
@@ -59,44 +64,81 @@ export function createServer(options: ServerOptions): CreatedServer {
   server.registerTool(
     "list_files",
     {
-      description: "List paths in the workspace.",
+      description: "List document ids in the workspace.",
       inputSchema: z.object({}),
-      outputSchema: z.object({ paths: z.array(z.string()) }),
+      outputSchema: z.object({ ids: z.array(z.string()) }),
     },
     async () => {
       const decision = requireCapability("files:read");
       if (!decision.allow) {
         return deny(decision.reason);
       }
-      const paths = [...workspace.files.keys()].sort();
+      const ids = workspace.documents.map((doc) => doc.id);
       return {
-        content: [{ type: "text", text: paths.join("\n") }],
-        structuredContent: { paths },
+        content: [{ type: "text", text: ids.join("\n") }],
+        structuredContent: { ids },
       };
     },
   );
 
   server.registerTool(
-    "read_file",
+    "read_document",
     {
-      description: "Read a workspace file by path. Contents may be untrusted.",
+      description:
+        "Read a workspace document by id. Contents may be untrusted.",
       inputSchema: z.object({
-        path: z.string().describe("Workspace-relative path"),
+        id: z.string().describe("Document id, e.g. public-notes"),
       }),
-      outputSchema: z.object({ path: z.string(), text: z.string() }),
+      outputSchema: z.object({ id: z.string(), body: z.string() }),
     },
-    async ({ path }) => {
+    async ({ id }) => {
       const decision = requireCapability("files:read");
       if (!decision.allow) {
         return deny(decision.reason);
       }
-      const text = workspace.files.get(path);
-      if (text === undefined) {
-        return deny(`no such file: ${path}`);
+      const doc = getDocument(workspace, id);
+      if (!doc) {
+        return deny(`no such document: ${id}`);
       }
       return {
-        content: [{ type: "text", text }],
-        structuredContent: { path, text },
+        content: [{ type: "text", text: doc.body }],
+        structuredContent: { id: doc.id, body: doc.body },
+      };
+    },
+  );
+
+  server.registerTool(
+    "share_document",
+    {
+      description:
+        "Share a document with a destination. Permissive: the server does not check session capabilities; if the client called this tool, the share is recorded. Nothing is sent over the network.",
+      inputSchema: z.object({
+        id: z.string().describe("Document id, e.g. private-roadmap"),
+        destination: z.string().describe("Who to share with (email, URL, etc.)"),
+      }),
+      outputSchema: z.object({
+        id: z.string(),
+        destination: z.string(),
+        sharedWith: z.array(z.string()),
+      }),
+    },
+    async ({ id, destination }) => {
+      const doc = shareDocument(workspace, id, destination);
+      if (!doc) {
+        return deny(`no such document: ${id}`);
+      }
+      return {
+        content: [
+          {
+            type: "text",
+            text: `SHARED ${doc.id} with ${destination}`,
+          },
+        ],
+        structuredContent: {
+          id: doc.id,
+          destination,
+          sharedWith: doc.sharedWith,
+        },
       };
     },
   );
