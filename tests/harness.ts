@@ -1,26 +1,23 @@
 import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
 import { createMcpHandler } from "@modelcontextprotocol/server";
 
-import { readerSession } from "../src/policy.js";
-import { createServer, type PolicyMode } from "../src/server.js";
+import type { Session } from "../src/policy.js";
+import { agentSession } from "../src/policy.js";
+import { createServer } from "../src/server.js";
 import type { Workspace } from "../src/workspace.js";
 
 export type Harness = {
   client: Client;
   workspace: Workspace;
+  session: Session;
   close: () => Promise<void>;
-  workspaceLedgerLength: () => number;
 };
 
-export async function connectHarness(options: {
-  policyMode: PolicyMode;
-  session?: ReturnType<typeof readerSession>;
-  outOfBandAdminToken?: string;
+export async function connectHarness(options?: {
+  session?: Session;
 }): Promise<Harness> {
   const created = createServer({
-    session: options.session ?? readerSession(),
-    policyMode: options.policyMode,
-    outOfBandAdminToken: options.outOfBandAdminToken,
+    session: options?.session ?? agentSession(),
   });
 
   const handler = createMcpHandler(() => created.server);
@@ -40,7 +37,7 @@ export async function connectHarness(options: {
   return {
     client,
     workspace: created.workspace,
-    workspaceLedgerLength: () => created.workspace.ledger.length,
+    session: created.session,
     close: async () => {
       await client.close();
       await handler.close();

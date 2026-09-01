@@ -3,12 +3,12 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Minimal MCP server experiment: prompt-injected content vs server-side auth boundaries",
+  "description": "Minimal MCP server: untrusted document injection vs document:share on the server",
   "scripts": {
     "build": "tsc",
     "start": "node dist/server.js",
     "dev": "tsx src/server.ts",
-    "test": "vitest run",
+    "scenario": "tsx scripts/injection-scenario.ts",
     "test:watch": "vitest"
   },
   "engines": {
