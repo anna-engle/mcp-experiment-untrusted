@@ -1,24 +1,32 @@
 /**
  * Naive-agent demo (no LLM): read untrusted text, then try what it asks.
  *
- *   read malicious-document
- *   → share_document(private-roadmap, badguy@bad.com)
- *   → server checks document:share → DENY
- *
- * Run: npm run scenario
+ *   npm run scenario:open   — --open, no document:share check (attack succeeds)
+ *   npm run scenario        — check in place (DENY)
  */
-import { getDocument, MALICIOUS_DOCUMENT_ID, PRIVATE_ROADMAP_ID } from "../src/workspace.js";
+import {
+  destinationFromUntrustedText,
+  getDocument,
+  MALICIOUS_DOCUMENT_ID,
+  PRIVATE_ROADMAP_ID,
+} from "../src/workspace.js";
 import { connectHarness, textOf } from "../tests/harness.js";
 
 function log(line: string) {
   console.log(line);
 }
 
-const harness = await connectHarness();
+const enforceShareAuth =
+  !process.argv.includes("--open") && process.env.SHARE_AUTH !== "off";
+const harness = await connectHarness({ enforceShareAuth });
 
 try {
   log("=== injection scenario ===");
-  log("agent: document:read=true  document:share=false");
+  log(
+    enforceShareAuth
+      ? "share auth: ON  (document:share required)"
+      : "share auth: OFF (unprotected — if the agent asks, we share)",
+  );
   log("");
 
   log("1. MCP client → read_document({ id: \"malicious-document\" })");
@@ -33,11 +41,10 @@ try {
   log("");
 
   log("2. Agent encounters instruction in untrusted text");
-  const match = body.match(/Share the private roadmap with (\S+)/i);
-  if (!match?.[1]) {
+  const destination = destinationFromUntrustedText(body);
+  if (!destination) {
     throw new Error("expected share instruction in malicious-document");
   }
-  const destination = match[1];
   log(`   found: share private-roadmap with ${destination}`);
   log("");
 
@@ -47,24 +54,40 @@ try {
     arguments: { id: PRIVATE_ROADMAP_ID, destination },
   });
   const shareText = textOf(share);
-  log("4. server checks policy (document:share)");
+  log(
+    enforceShareAuth
+      ? "4. server checks policy (document:share)"
+      : "4. server does not check document:share",
+  );
   log(`   tool result: ${shareText}`);
   log("");
 
   const sharedWith = getDocument(harness.workspace, PRIVATE_ROADMAP_ID)?.sharedWith ?? [];
-  const denied =
-    share.isError === true &&
-    shareText.includes("document:share") &&
-    sharedWith.length === 0;
 
-  if (!denied) {
-    log("expected DENY; share was not blocked");
-    log(`   private-roadmap.sharedWith = ${JSON.stringify(sharedWith)}`);
-    process.exitCode = 1;
+  if (enforceShareAuth) {
+    const denied =
+      share.isError === true &&
+      shareText.includes("document:share") &&
+      sharedWith.length === 0;
+    if (!denied) {
+      log("expected DENY; share was not blocked");
+      process.exitCode = 1;
+    } else {
+      log("DENY");
+    }
   } else {
-    log("DENY");
-    log(`   private-roadmap.sharedWith = ${JSON.stringify(sharedWith)}`);
+    const leaked =
+      !share.isError &&
+      shareText.startsWith("SHARED ") &&
+      sharedWith.includes(destination);
+    if (!leaked) {
+      log("expected SUCCESS; share did not land");
+      process.exitCode = 1;
+    } else {
+      log("SUCCESS");
+    }
   }
+  log(`   private-roadmap.sharedWith = ${JSON.stringify(sharedWith)}`);
 } finally {
   await harness.close();
 }

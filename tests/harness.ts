@@ -15,9 +15,11 @@ export type Harness = {
 
 export async function connectHarness(options?: {
   session?: Session;
+  enforceShareAuth?: boolean;
 }): Promise<Harness> {
   const created = createServer({
     session: options?.session ?? agentSession(),
+    enforceShareAuth: options?.enforceShareAuth,
   });
 
   const handler = createMcpHandler(() => created.server);

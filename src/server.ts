@@ -15,6 +15,12 @@ import {
 export type ServerOptions = {
   session?: Session;
   workspace?: Workspace;
+  /**
+   * Demo-only. When false, share_document skips the document:share check.
+   * Stdio (`npm run dev`) never sets this; default is true.
+   * Do not copy `false` into a real deployment.
+   */
+  enforceShareAuth?: boolean;
 };
 
 export type CreatedServer = {
@@ -33,6 +39,7 @@ function deny(reason: string) {
 export function createServer(options: ServerOptions = {}): CreatedServer {
   const workspace = options.workspace ?? createWorkspace();
   const session = options.session ?? agentSession();
+  const enforceShareAuth = options.enforceShareAuth ?? true;
 
   const server = new McpServer({
     name: "mcp-experiment-untrusted",
@@ -89,9 +96,11 @@ export function createServer(options: ServerOptions = {}): CreatedServer {
       }),
     },
     async ({ id, destination }) => {
-      const decision = authorize(session, "document:share");
-      if (!decision.allow) {
-        return deny(decision.reason);
+      if (enforceShareAuth) {
+        const decision = authorize(session, "document:share");
+        if (!decision.allow) {
+          return deny(decision.reason);
+        }
       }
       const doc = shareDocument(workspace, id, destination);
       if (!doc) {
